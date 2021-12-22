@@ -94,6 +94,8 @@ func main() {
 			args = append(args, "--proxy")
 			args = append(args, *httpProxyAddress)
 		}
+		args = append(args, "--concurrent-fragments")
+		args = append(args, "10")
 		args = append(args, "-o")
 		args = append(args, t.OutputFile)
 		args = append(args, t.URL)
