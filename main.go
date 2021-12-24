@@ -104,8 +104,9 @@ func main() {
 	level.Info(l).Log("msg", "collected tasks", "count", len(tasks))
 	for _, t := range tasks {
 		// Skip if we already downloaded the file previously
-		if exists := d.Has(hashURL(t.URL)); exists {
-			level.Info(l).Log("msg", "url already in cache, skipping", "url", t.URL)
+		hashedURL := hashURL(t.URL)
+		if exists := d.Has(hashedURL); exists {
+			level.Info(l).Log("msg", "url already in cache, skipping", "url", t.URL, "md5", hashedURL)
 			continue
 		}
 		level.Info(l).Log("msg", "working on task", "url", t.URL, "clear_name", t.ClearName, "output_path", t.OutputFile)
