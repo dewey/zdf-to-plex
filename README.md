@@ -28,3 +28,8 @@ The following environment variables can be set to modify the behaviour of the to
 ```
 DEBUG=TRUE HTTP_PROXY_ADDRESS=username:password@10.0.0.1:10000 ENTRYPOINTS=https://www.zdf.de/serien/inspector-barnaby YTDL_BIN=/usr/local/bin/yt-dlp CACHE_PATH=zdf_to_plex.cache OUTPUT_BASE_PATH=/home/ubuntu/media/TV-Misc ./zdf-to-plex-amd64-linux
 ```
+
+# Development
+
+- Set up environment variables in `develop.env`
+- Run `./run_develop.sh` to run the tool
