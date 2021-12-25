@@ -8,6 +8,9 @@ a new episode is available and was downloaded successfully.
 
 It is supposed to run in a cron job to pick up new episodes, the successful downloads are cached so that we don't re-download them.
 
+![workflow](https://user-images.githubusercontent.com/790262/147382666-d9ba85b4-7852-462e-b9a8-d223047e7513.jpg)
+
+
 # Configuration
 
 The following environment variables can be set to modify the behaviour of the tool.
