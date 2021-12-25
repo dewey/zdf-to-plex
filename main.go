@@ -66,7 +66,7 @@ func main() {
 			Password: *twilioAuthToken,
 		})
 		twilioClient = client
-		level.Info(l).Log("msg", "found needed twilio credentials, initializing sms notifications")
+		level.Info(l).Log("msg", "found twilio credentials, initializing sms notifications")
 	}
 
 	resp, err := http.Get("https://zdf-cdn.live.cellular.de/static/export/live/google/catalog.json")
@@ -126,15 +126,20 @@ func main() {
 		cmd := exec.Command(*youtubedlBinPath, args...)
 
 		// Show output in Stdout
+		var combinedOutput []byte
 		if *debug {
 			cmd.Stdout = os.Stdout
+			if err := cmd.Run(); err != nil {
+				level.Error(l).Log("err", errors.Wrap(err, "running exec command"))
+				return
+			}
 		} else {
-			fmt.Println("not")
-		}
-
-		if err := cmd.Run(); err != nil {
-			level.Error(l).Log("err", errors.Wrap(err, "running exec command"))
-			return
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				level.Error(l).Log("err", errors.Wrap(err, "running exec command"))
+				return
+			}
+			combinedOutput = out
 		}
 
 		// Cache is successful
@@ -145,6 +150,11 @@ func main() {
 
 		// Send notification of new episode
 		if twilioClient != nil {
+			// Don't send a notification if we already downloaded the file
+			if strings.Contains(string(combinedOutput), "already been downloaded") {
+				level.Info(l).Log("msg", "already been downloaded, skip sending a notification")
+				continue
+			}
 			message := fmt.Sprintf("Neue %s Folge in Plex: %s", t.ClearNameShow, t.EpisodeName)
 			if err := sendNotification(l, twilioClient, *twilioPhoneFromNumber, *twilioPhoneToNumber, message); err != nil {
 				level.Error(l).Log("err", errors.Wrap(err, "sending notification"))
