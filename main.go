@@ -136,7 +136,7 @@ func main() {
 		} else {
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				level.Error(l).Log("err", errors.Wrap(err, "running exec command"))
+				level.Error(l).Log("err", errors.Wrap(err, "running exec command collecting combined output"))
 				return
 			}
 			combinedOutput = out

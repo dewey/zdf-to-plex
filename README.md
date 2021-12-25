@@ -32,6 +32,14 @@ The following environment variables can be set to modify the behaviour of the to
 DEBUG=TRUE HTTP_PROXY_ADDRESS=username:password@10.0.0.1:10000 ENTRYPOINTS=https://www.zdf.de/serien/inspector-barnaby YTDL_BIN=/usr/local/bin/yt-dlp CACHE_PATH=zdf_to_plex.cache OUTPUT_BASE_PATH=/home/ubuntu/media/TV-Misc ./zdf-to-plex-amd64-linux
 ```
 
+# Usage in Cron
+
+Run hourly and lock if there's already one instance running.
+
+```
+0 */1 * * * /usr/bin/flock -n /home/ubuntu/services/zdf-to-plex/cron.lockfile /home/ubuntu/services/zdf-to-plex/run-zdf-to-plex.sh >> /home/ubuntu/services/zdf-to-plex/zdf-to-plex.log 2>&1
+```
+
 # Development
 
 - Set up environment variables in `develop.env`
