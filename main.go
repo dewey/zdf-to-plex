@@ -121,6 +121,8 @@ func main() {
 		args = append(args, "--concurrent-fragments")
 		args = append(args, "10")
 		args = append(args, "-o")
+		// Progress bar as new lines, so that it looks more readable in log files
+		args = append(args, "--newline")
 		args = append(args, t.OutputFile)
 		args = append(args, t.URL)
 		cmd := exec.Command(*youtubedlBinPath, args...)
