@@ -62,7 +62,7 @@ func main() {
 
 	var twilioClient *twilio.RestClient
 	if *twilioPhoneFromNumber != "" && *twilioAuthToken != "" && *twilioSubaccountID != "" && *twilioPhoneToNumber != "" {
-		client := twilio.NewRestClientWithParams(twilio.RestClientParams{
+		client := twilio.NewRestClientWithParams(twilio.ClientParams{
 			Username: *twilioSubaccountID,
 			Password: *twilioAuthToken,
 		})
