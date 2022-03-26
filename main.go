@@ -53,6 +53,7 @@ func main() {
 
 	w := log.NewSyncWriter(os.Stderr)
 	l := log.NewLogfmtLogger(w)
+	l = log.With(l, "ts", log.DefaultTimestampUTC)
 	level.Info(l).Log("msg", "starting zdf-to-plex")
 
 	d := diskv.New(diskv.Options{
