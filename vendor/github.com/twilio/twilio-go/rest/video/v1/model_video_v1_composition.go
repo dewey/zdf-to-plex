@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -37,6 +37,8 @@ type VideoV1Composition struct {
 	Format *string `json:"format,omitempty"`
 	// The URL of the media file associated with the composition
 	Links *map[string]interface{} `json:"links,omitempty"`
+	// The URL of the media file associated with the composition when stored externally
+	MediaExternalLocation *string `json:"media_external_location,omitempty"`
 	// The dimensions of the video image in pixels expressed as columns (width) and rows (height)
 	Resolution *string `json:"resolution,omitempty"`
 	// The SID of the Group Room that generated the audio and video tracks used in the composition
@@ -47,6 +49,10 @@ type VideoV1Composition struct {
 	Size *int `json:"size,omitempty"`
 	// The status of the composition
 	Status *string `json:"status,omitempty"`
+	// The URL called to send status information on every composition event.
+	StatusCallback *string `json:"status_callback,omitempty"`
+	// The HTTP method used to call `status_callback`
+	StatusCallbackMethod *string `json:"status_callback_method,omitempty"`
 	// Whether to remove intervals with no media
 	Trim *bool `json:"trim,omitempty"`
 	// The absolute URL of the resource

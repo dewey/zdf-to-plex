@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -13,6 +13,6 @@ package openapi
 
 // ListConversationScopedWebhookResponse struct for ListConversationScopedWebhookResponse
 type ListConversationScopedWebhookResponse struct {
-	Meta     ListConversationResponseMeta               `json:"meta,omitempty"`
+	Meta     ListConfigurationAddressResponseMeta       `json:"meta,omitempty"`
 	Webhooks []ConversationsV1ConversationScopedWebhook `json:"webhooks,omitempty"`
 }

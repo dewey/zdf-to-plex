@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,15 +15,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 	"time"
 
 	"github.com/twilio/twilio-go/client"
 )
 
+// Optional parameters for the method 'DeleteUserChannel'
+type DeleteUserChannelParams struct {
+	// The X-Twilio-Webhook-Enabled HTTP request header
+	XTwilioWebhookEnabled *string `json:"X-Twilio-Webhook-Enabled,omitempty"`
+}
+
+func (params *DeleteUserChannelParams) SetXTwilioWebhookEnabled(XTwilioWebhookEnabled string) *DeleteUserChannelParams {
+	params.XTwilioWebhookEnabled = &XTwilioWebhookEnabled
+	return params
+}
+
 // Removes User from selected Channel.
-func (c *ApiService) DeleteUserChannel(ServiceSid string, UserSid string, ChannelSid string) error {
+func (c *ApiService) DeleteUserChannel(ServiceSid string, UserSid string, ChannelSid string, params *DeleteUserChannelParams) error {
 	path := "/v2/Services/{ServiceSid}/Users/{UserSid}/Channels/{ChannelSid}"
 	path = strings.Replace(path, "{"+"ServiceSid"+"}", ServiceSid, -1)
 	path = strings.Replace(path, "{"+"UserSid"+"}", UserSid, -1)
@@ -31,6 +41,10 @@ func (c *ApiService) DeleteUserChannel(ServiceSid string, UserSid string, Channe
 
 	data := url.Values{}
 	headers := make(map[string]interface{})
+
+	if params != nil && params.XTwilioWebhookEnabled != nil {
+		headers["X-Twilio-Webhook-Enabled"] = *params.XTwilioWebhookEnabled
+	}
 
 	resp, err := c.requestHandler.Delete(c.baseURL+path, data, headers)
 	if err != nil {
@@ -121,28 +135,15 @@ func (c *ApiService) PageUserChannel(ServiceSid string, UserSid string, params *
 
 // Lists UserChannel records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListUserChannel(ServiceSid string, UserSid string, params *ListUserChannelParams) ([]ChatV2UserChannel, error) {
-	if params == nil {
-		params = &ListUserChannelParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageUserChannel(ServiceSid, UserSid, params, "", "")
+	response, err := c.StreamUserChannel(ServiceSid, UserSid, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []ChatV2UserChannel
+	records := make([]ChatV2UserChannel, 0)
 
-	for response != nil {
-		records = append(records, response.Channels...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListUserChannelResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListUserChannelResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -160,18 +161,24 @@ func (c *ApiService) StreamUserChannel(ServiceSid string, UserSid string, params
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan ChatV2UserChannel, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Channels {
-				channel <- response.Channels[item]
+			responseRecords := response.Channels
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListUserChannelResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListUserChannelResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -23,6 +22,8 @@ import (
 
 // Optional parameters for the method 'CreatePlayerStreamer'
 type CreatePlayerStreamerParams struct {
+	// The maximum time, in seconds, that the PlayerStreamer can run before automatically ends. The default value is 300 seconds, and the maximum value is 90000 seconds. Once this maximum duration is reached, Twilio will end the PlayerStreamer, regardless of whether media is still streaming.
+	MaxDuration *int `json:"MaxDuration,omitempty"`
 	// The URL to which Twilio will send asynchronous webhook requests for every PlayerStreamer event. See [Status Callbacks](/docs/live/status-callbacks) for more details.
 	StatusCallback *string `json:"StatusCallback,omitempty"`
 	// The HTTP method Twilio should use to call the `status_callback` URL. Can be `POST` or `GET` and the default is `POST`.
@@ -31,6 +32,10 @@ type CreatePlayerStreamerParams struct {
 	Video *bool `json:"Video,omitempty"`
 }
 
+func (params *CreatePlayerStreamerParams) SetMaxDuration(MaxDuration int) *CreatePlayerStreamerParams {
+	params.MaxDuration = &MaxDuration
+	return params
+}
 func (params *CreatePlayerStreamerParams) SetStatusCallback(StatusCallback string) *CreatePlayerStreamerParams {
 	params.StatusCallback = &StatusCallback
 	return params
@@ -50,6 +55,9 @@ func (c *ApiService) CreatePlayerStreamer(params *CreatePlayerStreamerParams) (*
 	data := url.Values{}
 	headers := make(map[string]interface{})
 
+	if params != nil && params.MaxDuration != nil {
+		data.Set("MaxDuration", fmt.Sprint(*params.MaxDuration))
+	}
 	if params != nil && params.StatusCallback != nil {
 		data.Set("StatusCallback", *params.StatusCallback)
 	}
@@ -168,28 +176,15 @@ func (c *ApiService) PagePlayerStreamer(params *ListPlayerStreamerParams, pageTo
 
 // Lists PlayerStreamer records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListPlayerStreamer(params *ListPlayerStreamerParams) ([]MediaV1PlayerStreamer, error) {
-	if params == nil {
-		params = &ListPlayerStreamerParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PagePlayerStreamer(params, "", "")
+	response, err := c.StreamPlayerStreamer(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []MediaV1PlayerStreamer
+	records := make([]MediaV1PlayerStreamer, 0)
 
-	for response != nil {
-		records = append(records, response.PlayerStreamers...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListPlayerStreamerResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListPlayerStreamerResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -207,18 +202,24 @@ func (c *ApiService) StreamPlayerStreamer(params *ListPlayerStreamerParams) (cha
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan MediaV1PlayerStreamer, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.PlayerStreamers {
-				channel <- response.PlayerStreamers[item]
+			responseRecords := response.PlayerStreamers
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListPlayerStreamerResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListPlayerStreamerResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

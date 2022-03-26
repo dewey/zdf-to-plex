@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -169,28 +168,15 @@ func (c *ApiService) PageCredentialPublicKey(params *ListCredentialPublicKeyPara
 
 // Lists CredentialPublicKey records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListCredentialPublicKey(params *ListCredentialPublicKeyParams) ([]AccountsV1CredentialPublicKey, error) {
-	if params == nil {
-		params = &ListCredentialPublicKeyParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageCredentialPublicKey(params, "", "")
+	response, err := c.StreamCredentialPublicKey(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []AccountsV1CredentialPublicKey
+	records := make([]AccountsV1CredentialPublicKey, 0)
 
-	for response != nil {
-		records = append(records, response.Credentials...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListCredentialPublicKeyResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListCredentialPublicKeyResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -208,18 +194,24 @@ func (c *ApiService) StreamCredentialPublicKey(params *ListCredentialPublicKeyPa
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan AccountsV1CredentialPublicKey, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Credentials {
-				channel <- response.Credentials[item]
+			responseRecords := response.Credentials
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListCredentialPublicKeyResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListCredentialPublicKeyResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

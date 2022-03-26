@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -23,7 +22,7 @@ import (
 
 // Optional parameters for the method 'CreateFlexFlow'
 type CreateFlexFlowParams struct {
-	// The channel type. Can be: `web`, `facebook`, `sms`, `whatsapp`, `line` or `custom`.
+	// The channel type. One of `web`, `facebook`, `sms`, `whatsapp`, `line` or `custom`. By default, Studio’s Send to Flex widget passes it on to the Task attributes for Tasks created based on this Flex Flow. The Task attributes will be used by the Flex UI to render the respective Task as appropriate (applying channel-specific design and length limits). If `channelType` is `facebook`, `whatsapp` or `line`, the Send to Flex widget should set the Task Channel to Programmable Chat.
 	ChannelType *string `json:"ChannelType,omitempty"`
 	// The SID of the chat service.
 	ChatServiceSid *string `json:"ChatServiceSid,omitempty"`
@@ -41,7 +40,7 @@ type CreateFlexFlowParams struct {
 	IntegrationFlowSid *string `json:"Integration.FlowSid,omitempty"`
 	// The Task priority of a new Task. The default priority is 0. Optional when `integrationType` is `task`, not applicable otherwise.
 	IntegrationPriority *int `json:"Integration.Priority,omitempty"`
-	// The number of times to retry the webhook if the first attempt fails. Can be an integer between 0 and 3 (inclusive), default is 3. Optional when `integrationType` is `external`, not applicable otherwise.
+	// The number of times to retry the Studio Flow or webhook in case of failure. Takes integer values from 0 to 3 with the default being 3. Optional when `integrationType` is `studio` or `external`, not applicable otherwise.
 	IntegrationRetryCount *int `json:"Integration.RetryCount,omitempty"`
 	// The Task timeout in seconds for a new Task. Default is 86,400 seconds (24 hours). Optional when `integrationType` is `task`, not applicable otherwise.
 	IntegrationTimeout *int `json:"Integration.Timeout,omitempty"`
@@ -301,28 +300,15 @@ func (c *ApiService) PageFlexFlow(params *ListFlexFlowParams, pageToken, pageNum
 
 // Lists FlexFlow records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListFlexFlow(params *ListFlexFlowParams) ([]FlexV1FlexFlow, error) {
-	if params == nil {
-		params = &ListFlexFlowParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageFlexFlow(params, "", "")
+	response, err := c.StreamFlexFlow(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []FlexV1FlexFlow
+	records := make([]FlexV1FlexFlow, 0)
 
-	for response != nil {
-		records = append(records, response.FlexFlows...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListFlexFlowResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListFlexFlowResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -340,18 +326,24 @@ func (c *ApiService) StreamFlexFlow(params *ListFlexFlowParams) (chan FlexV1Flex
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan FlexV1FlexFlow, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.FlexFlows {
-				channel <- response.FlexFlows[item]
+			responseRecords := response.FlexFlows
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListFlexFlowResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListFlexFlowResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}
@@ -384,7 +376,7 @@ func (c *ApiService) getNextListFlexFlowResponse(nextPageUrl string) (interface{
 
 // Optional parameters for the method 'UpdateFlexFlow'
 type UpdateFlexFlowParams struct {
-	// The channel type. Can be: `web`, `facebook`, `sms`, `whatsapp`, `line` or `custom`.
+	// The channel type. One of `web`, `facebook`, `sms`, `whatsapp`, `line` or `custom`. By default, Studio’s Send to Flex widget passes it on to the Task attributes for Tasks created based on this Flex Flow. The Task attributes will be used by the Flex UI to render the respective Task as appropriate (applying channel-specific design and length limits). If `channelType` is `facebook`, `whatsapp` or `line`, the Send to Flex widget should set the Task Channel to Programmable Chat.
 	ChannelType *string `json:"ChannelType,omitempty"`
 	// The SID of the chat service.
 	ChatServiceSid *string `json:"ChatServiceSid,omitempty"`
@@ -402,7 +394,7 @@ type UpdateFlexFlowParams struct {
 	IntegrationFlowSid *string `json:"Integration.FlowSid,omitempty"`
 	// The Task priority of a new Task. The default priority is 0. Optional when `integrationType` is `task`, not applicable otherwise.
 	IntegrationPriority *int `json:"Integration.Priority,omitempty"`
-	// The number of times to retry the webhook if the first attempt fails. Can be an integer between 0 and 3 (inclusive), default is 3. Optional when `integrationType` is `external`, not applicable otherwise.
+	// The number of times to retry the Studio Flow or webhook in case of failure. Takes integer values from 0 to 3 with the default being 3. Optional when `integrationType` is `studio` or `external`, not applicable otherwise.
 	IntegrationRetryCount *int `json:"Integration.RetryCount,omitempty"`
 	// The Task timeout in seconds for a new Task. Default is 86,400 seconds (24 hours). Optional when `integrationType` is `task`, not applicable otherwise.
 	IntegrationTimeout *int `json:"Integration.Timeout,omitempty"`

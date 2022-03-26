@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -19,12 +19,6 @@ import (
 type SupersimV1Fleet struct {
 	// The SID of the Account that created the resource
 	AccountSid *string `json:"account_sid,omitempty"`
-	// Defines whether SIMs in the Fleet are capable of sending and receiving machine-to-machine SMS via Commands
-	CommandsEnabled *bool `json:"commands_enabled,omitempty"`
-	// A string representing the HTTP method to use when making a request to `commands_url`
-	CommandsMethod *string `json:"commands_method,omitempty"`
-	// The URL that will receive a webhook when a Super SIM in the Fleet is used to send an SMS from your device to the Commands number
-	CommandsUrl *string `json:"commands_url,omitempty"`
 	// Defines whether SIMs in the Fleet are capable of using data connectivity
 	DataEnabled *bool `json:"data_enabled,omitempty"`
 	// The total data usage (download and upload combined) in Megabytes that each Sim resource assigned to the Fleet resource can consume
@@ -35,6 +29,10 @@ type SupersimV1Fleet struct {
 	DateCreated *time.Time `json:"date_created,omitempty"`
 	// The ISO 8601 date and time in GMT when the resource was last updated
 	DateUpdated *time.Time `json:"date_updated,omitempty"`
+	// A string representing the HTTP method to use when making a request to `ip_commands_url`
+	IpCommandsMethod *string `json:"ip_commands_method,omitempty"`
+	// The URL that will receive a webhook when a Super SIM in the Fleet is used to send an IP Command from your device
+	IpCommandsUrl *string `json:"ip_commands_url,omitempty"`
 	// The SID of the Network Access Profile of the Fleet
 	NetworkAccessProfileSid *string `json:"network_access_profile_sid,omitempty"`
 	// The unique string that identifies the resource

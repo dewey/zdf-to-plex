@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -158,28 +157,15 @@ func (c *ApiService) PageConnectApp(params *ListConnectAppParams, pageToken, pag
 
 // Lists ConnectApp records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListConnectApp(params *ListConnectAppParams) ([]ApiV2010ConnectApp, error) {
-	if params == nil {
-		params = &ListConnectAppParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageConnectApp(params, "", "")
+	response, err := c.StreamConnectApp(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []ApiV2010ConnectApp
+	records := make([]ApiV2010ConnectApp, 0)
 
-	for response != nil {
-		records = append(records, response.ConnectApps...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListConnectAppResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListConnectAppResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -197,18 +183,24 @@ func (c *ApiService) StreamConnectApp(params *ListConnectAppParams) (chan ApiV20
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan ApiV2010ConnectApp, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.ConnectApps {
-				channel <- response.ConnectApps[item]
+			responseRecords := response.ConnectApps
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListConnectAppResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListConnectAppResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

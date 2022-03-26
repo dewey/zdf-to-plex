@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -165,28 +164,15 @@ func (c *ApiService) PageMessagingConfiguration(ServiceSid string, params *ListM
 
 // Lists MessagingConfiguration records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListMessagingConfiguration(ServiceSid string, params *ListMessagingConfigurationParams) ([]VerifyV2MessagingConfiguration, error) {
-	if params == nil {
-		params = &ListMessagingConfigurationParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageMessagingConfiguration(ServiceSid, params, "", "")
+	response, err := c.StreamMessagingConfiguration(ServiceSid, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []VerifyV2MessagingConfiguration
+	records := make([]VerifyV2MessagingConfiguration, 0)
 
-	for response != nil {
-		records = append(records, response.MessagingConfigurations...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListMessagingConfigurationResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListMessagingConfigurationResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -204,18 +190,24 @@ func (c *ApiService) StreamMessagingConfiguration(ServiceSid string, params *Lis
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan VerifyV2MessagingConfiguration, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.MessagingConfigurations {
-				channel <- response.MessagingConfigurations[item]
+			responseRecords := response.MessagingConfigurations
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListMessagingConfigurationResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListMessagingConfigurationResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

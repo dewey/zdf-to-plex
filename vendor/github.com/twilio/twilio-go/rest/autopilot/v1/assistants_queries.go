@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -216,28 +215,15 @@ func (c *ApiService) PageQuery(AssistantSid string, params *ListQueryParams, pag
 
 // Lists Query records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListQuery(AssistantSid string, params *ListQueryParams) ([]AutopilotV1Query, error) {
-	if params == nil {
-		params = &ListQueryParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageQuery(AssistantSid, params, "", "")
+	response, err := c.StreamQuery(AssistantSid, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []AutopilotV1Query
+	records := make([]AutopilotV1Query, 0)
 
-	for response != nil {
-		records = append(records, response.Queries...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListQueryResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListQueryResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -255,18 +241,24 @@ func (c *ApiService) StreamQuery(AssistantSid string, params *ListQueryParams) (
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan AutopilotV1Query, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Queries {
-				channel <- response.Queries[item]
+			responseRecords := response.Queries
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListQueryResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListQueryResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

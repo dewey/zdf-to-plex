@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -180,28 +179,15 @@ func (c *ApiService) PageActivity(WorkspaceSid string, params *ListActivityParam
 
 // Lists Activity records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListActivity(WorkspaceSid string, params *ListActivityParams) ([]TaskrouterV1Activity, error) {
-	if params == nil {
-		params = &ListActivityParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageActivity(WorkspaceSid, params, "", "")
+	response, err := c.StreamActivity(WorkspaceSid, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []TaskrouterV1Activity
+	records := make([]TaskrouterV1Activity, 0)
 
-	for response != nil {
-		records = append(records, response.Activities...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListActivityResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListActivityResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -219,18 +205,24 @@ func (c *ApiService) StreamActivity(WorkspaceSid string, params *ListActivityPar
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan TaskrouterV1Activity, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Activities {
-				channel <- response.Activities[item]
+			responseRecords := response.Activities
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListActivityResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListActivityResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -167,28 +166,15 @@ func (c *ApiService) PageBrandRegistrations(params *ListBrandRegistrationsParams
 
 // Lists BrandRegistrations records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListBrandRegistrations(params *ListBrandRegistrationsParams) ([]MessagingV1BrandRegistrations, error) {
-	if params == nil {
-		params = &ListBrandRegistrationsParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageBrandRegistrations(params, "", "")
+	response, err := c.StreamBrandRegistrations(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []MessagingV1BrandRegistrations
+	records := make([]MessagingV1BrandRegistrations, 0)
 
-	for response != nil {
-		records = append(records, response.Data...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListBrandRegistrationsResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListBrandRegistrationsResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -206,18 +192,24 @@ func (c *ApiService) StreamBrandRegistrations(params *ListBrandRegistrationsPara
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan MessagingV1BrandRegistrations, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Data {
-				channel <- response.Data[item]
+			responseRecords := response.Data
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListBrandRegistrationsResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListBrandRegistrationsResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}
@@ -246,4 +238,26 @@ func (c *ApiService) getNextListBrandRegistrationsResponse(nextPageUrl string) (
 		return nil, err
 	}
 	return ps, nil
+}
+
+func (c *ApiService) UpdateBrandRegistrations(Sid string) (*MessagingV1BrandRegistrations, error) {
+	path := "/v1/a2p/BrandRegistrations/{Sid}"
+	path = strings.Replace(path, "{"+"Sid"+"}", Sid, -1)
+
+	data := url.Values{}
+	headers := make(map[string]interface{})
+
+	resp, err := c.requestHandler.Post(c.baseURL+path, data, headers)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	ps := &MessagingV1BrandRegistrations{}
+	if err := json.NewDecoder(resp.Body).Decode(ps); err != nil {
+		return nil, err
+	}
+
+	return ps, err
 }

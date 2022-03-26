@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -193,28 +192,15 @@ func (c *ApiService) PageWebChannel(params *ListWebChannelParams, pageToken, pag
 
 // Lists WebChannel records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListWebChannel(params *ListWebChannelParams) ([]FlexV1WebChannel, error) {
-	if params == nil {
-		params = &ListWebChannelParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageWebChannel(params, "", "")
+	response, err := c.StreamWebChannel(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []FlexV1WebChannel
+	records := make([]FlexV1WebChannel, 0)
 
-	for response != nil {
-		records = append(records, response.FlexChatChannels...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListWebChannelResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListWebChannelResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -232,18 +218,24 @@ func (c *ApiService) StreamWebChannel(params *ListWebChannelParams) (chan FlexV1
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan FlexV1WebChannel, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.FlexChatChannels {
-				channel <- response.FlexChatChannels[item]
+			responseRecords := response.FlexChatChannels
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListWebChannelResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListWebChannelResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

@@ -1,6 +1,6 @@
 module zdf-to-plex
 
-go 1.17
+go 1.18
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.0
@@ -8,7 +8,7 @@ require (
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/peterbourgon/ff/v3 v3.1.2
 	github.com/pkg/errors v0.9.1
-	github.com/twilio/twilio-go v0.19.0
+	github.com/twilio/twilio-go v0.23.0
 )
 
 require (

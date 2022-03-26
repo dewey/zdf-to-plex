@@ -12,6 +12,7 @@ import (
 	BulkexportsV1 "github.com/twilio/twilio-go/rest/bulkexports/v1"
 	ChatV1 "github.com/twilio/twilio-go/rest/chat/v1"
 	ChatV2 "github.com/twilio/twilio-go/rest/chat/v2"
+	ChatV3 "github.com/twilio/twilio-go/rest/chat/v3"
 	ConversationsV1 "github.com/twilio/twilio-go/rest/conversations/v1"
 	EventsV1 "github.com/twilio/twilio-go/rest/events/v1"
 	FaxV1 "github.com/twilio/twilio-go/rest/fax/v1"
@@ -81,6 +82,7 @@ type RestClient struct {
 	VideoV1         *VideoV1.ApiService
 	VoiceV1         *VoiceV1.ApiService
 	WirelessV1      *WirelessV1.ApiService
+	ChatV3          *ChatV3.ApiService
 }
 
 // Meta holds relevant pagination resources.
@@ -95,7 +97,7 @@ type Meta struct {
 	URL             *string `json:"url"`
 }
 
-type RestClientParams struct {
+type ClientParams struct {
 	Username   string
 	Password   string
 	AccountSid string
@@ -103,7 +105,7 @@ type RestClientParams struct {
 }
 
 // NewRestClientWithParams provides an initialized Twilio RestClient with params.
-func NewRestClientWithParams(params RestClientParams) *RestClient {
+func NewRestClientWithParams(params ClientParams) *RestClient {
 	requestHandler := client.NewRequestHandler(params.Client)
 
 	if params.Client == nil {
@@ -168,13 +170,14 @@ func NewRestClientWithParams(params RestClientParams) *RestClient {
 	c.VideoV1 = VideoV1.NewApiService(c.RequestHandler)
 	c.VoiceV1 = VoiceV1.NewApiService(c.RequestHandler)
 	c.WirelessV1 = WirelessV1.NewApiService(c.RequestHandler)
+	c.ChatV3 = ChatV3.NewApiService(c.RequestHandler)
 
 	return c
 }
 
 // NewRestClient provides an initialized Twilio RestClient.
 func NewRestClient() *RestClient {
-	return NewRestClientWithParams(RestClientParams{})
+	return NewRestClientWithParams(ClientParams{})
 }
 
 // SetTimeout sets the Timeout for Twilio HTTP requests.

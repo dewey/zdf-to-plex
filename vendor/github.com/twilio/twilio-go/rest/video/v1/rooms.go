@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 	"time"
 
@@ -46,7 +45,7 @@ type CreateRoomParams struct {
 	StatusCallbackMethod *string `json:"StatusCallbackMethod,omitempty"`
 	// The type of room. Can be: `go`, `peer-to-peer`, `group-small`, or `group`. The default value is `group`.
 	Type *string `json:"Type,omitempty"`
-	// An application-defined string that uniquely identifies the resource. It can be used as a `room_sid` in place of the resource's `sid` in the URL to address the resource. This value is unique for `in-progress` rooms. SDK clients can use this name to connect to the room. REST API clients can use this name in place of the Room SID to interact with the room as long as the room is `in-progress`.
+	// An application-defined string that uniquely identifies the resource. It can be used as a `room_sid` in place of the resource's `sid` in the URL to address the resource, assuming it does not contain any [reserved characters](https://tools.ietf.org/html/rfc3986#section-2.2) that would need to be URL encoded. This value is unique for `in-progress` rooms. SDK clients can use this name to connect to the room. REST API clients can use this name in place of the Room SID to interact with the room as long as the room is `in-progress`.
 	UniqueName *string `json:"UniqueName,omitempty"`
 	// Configures how long (in minutes) a room will remain active if no one joins. Valid values range from 1 to 60 minutes (no fractions).
 	UnusedRoomTimeout *int `json:"UnusedRoomTimeout,omitempty"`
@@ -293,28 +292,15 @@ func (c *ApiService) PageRoom(params *ListRoomParams, pageToken, pageNumber stri
 
 // Lists Room records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListRoom(params *ListRoomParams) ([]VideoV1Room, error) {
-	if params == nil {
-		params = &ListRoomParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageRoom(params, "", "")
+	response, err := c.StreamRoom(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []VideoV1Room
+	records := make([]VideoV1Room, 0)
 
-	for response != nil {
-		records = append(records, response.Rooms...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListRoomResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListRoomResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -332,18 +318,24 @@ func (c *ApiService) StreamRoom(params *ListRoomParams) (chan VideoV1Room, error
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan VideoV1Room, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Rooms {
-				channel <- response.Rooms[item]
+			responseRecords := response.Rooms
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListRoomResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListRoomResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

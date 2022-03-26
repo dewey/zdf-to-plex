@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -101,28 +100,15 @@ func (c *ApiService) PageRoomParticipantPublishedTrack(RoomSid string, Participa
 
 // Lists RoomParticipantPublishedTrack records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListRoomParticipantPublishedTrack(RoomSid string, ParticipantSid string, params *ListRoomParticipantPublishedTrackParams) ([]VideoV1RoomParticipantPublishedTrack, error) {
-	if params == nil {
-		params = &ListRoomParticipantPublishedTrackParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageRoomParticipantPublishedTrack(RoomSid, ParticipantSid, params, "", "")
+	response, err := c.StreamRoomParticipantPublishedTrack(RoomSid, ParticipantSid, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []VideoV1RoomParticipantPublishedTrack
+	records := make([]VideoV1RoomParticipantPublishedTrack, 0)
 
-	for response != nil {
-		records = append(records, response.PublishedTracks...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListRoomParticipantPublishedTrackResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListRoomParticipantPublishedTrackResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -140,18 +126,24 @@ func (c *ApiService) StreamRoomParticipantPublishedTrack(RoomSid string, Partici
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan VideoV1RoomParticipantPublishedTrack, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.PublishedTracks {
-				channel <- response.PublishedTracks[item]
+			responseRecords := response.PublishedTracks
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListRoomParticipantPublishedTrackResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListRoomParticipantPublishedTrackResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

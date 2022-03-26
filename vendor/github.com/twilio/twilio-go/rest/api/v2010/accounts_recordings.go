@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 	"time"
 
@@ -60,10 +59,16 @@ func (c *ApiService) DeleteRecording(Sid string, params *DeleteRecordingParams) 
 type FetchRecordingParams struct {
 	// The SID of the [Account](https://www.twilio.com/docs/iam/api/account) that created the Recording resource to fetch.
 	PathAccountSid *string `json:"PathAccountSid,omitempty"`
+	// A boolean parameter indicating whether to retrieve soft deleted recordings or not. Recordings metadata are kept after deletion for a retention period of 40 days.
+	IncludeSoftDeleted *bool `json:"IncludeSoftDeleted,omitempty"`
 }
 
 func (params *FetchRecordingParams) SetPathAccountSid(PathAccountSid string) *FetchRecordingParams {
 	params.PathAccountSid = &PathAccountSid
+	return params
+}
+func (params *FetchRecordingParams) SetIncludeSoftDeleted(IncludeSoftDeleted bool) *FetchRecordingParams {
+	params.IncludeSoftDeleted = &IncludeSoftDeleted
 	return params
 }
 
@@ -79,6 +84,10 @@ func (c *ApiService) FetchRecording(Sid string, params *FetchRecordingParams) (*
 
 	data := url.Values{}
 	headers := make(map[string]interface{})
+
+	if params != nil && params.IncludeSoftDeleted != nil {
+		data.Set("IncludeSoftDeleted", fmt.Sprint(*params.IncludeSoftDeleted))
+	}
 
 	resp, err := c.requestHandler.Get(c.baseURL+path, data, headers)
 	if err != nil {
@@ -109,6 +118,8 @@ type ListRecordingParams struct {
 	CallSid *string `json:"CallSid,omitempty"`
 	// The Conference SID that identifies the conference associated with the recording to read.
 	ConferenceSid *string `json:"ConferenceSid,omitempty"`
+	// A boolean parameter indicating whether to retrieve soft deleted recordings or not. Recordings metadata are kept after deletion for a retention period of 40 days.
+	IncludeSoftDeleted *bool `json:"IncludeSoftDeleted,omitempty"`
 	// How many resources to return in each list page. The default is 50, and the maximum is 1000.
 	PageSize *int `json:"PageSize,omitempty"`
 	// Max number of records to return.
@@ -137,6 +148,10 @@ func (params *ListRecordingParams) SetCallSid(CallSid string) *ListRecordingPara
 }
 func (params *ListRecordingParams) SetConferenceSid(ConferenceSid string) *ListRecordingParams {
 	params.ConferenceSid = &ConferenceSid
+	return params
+}
+func (params *ListRecordingParams) SetIncludeSoftDeleted(IncludeSoftDeleted bool) *ListRecordingParams {
+	params.IncludeSoftDeleted = &IncludeSoftDeleted
 	return params
 }
 func (params *ListRecordingParams) SetPageSize(PageSize int) *ListRecordingParams {
@@ -176,6 +191,9 @@ func (c *ApiService) PageRecording(params *ListRecordingParams, pageToken, pageN
 	if params != nil && params.ConferenceSid != nil {
 		data.Set("ConferenceSid", *params.ConferenceSid)
 	}
+	if params != nil && params.IncludeSoftDeleted != nil {
+		data.Set("IncludeSoftDeleted", fmt.Sprint(*params.IncludeSoftDeleted))
+	}
 	if params != nil && params.PageSize != nil {
 		data.Set("PageSize", fmt.Sprint(*params.PageSize))
 	}
@@ -204,28 +222,15 @@ func (c *ApiService) PageRecording(params *ListRecordingParams, pageToken, pageN
 
 // Lists Recording records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListRecording(params *ListRecordingParams) ([]ApiV2010Recording, error) {
-	if params == nil {
-		params = &ListRecordingParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageRecording(params, "", "")
+	response, err := c.StreamRecording(params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []ApiV2010Recording
+	records := make([]ApiV2010Recording, 0)
 
-	for response != nil {
-		records = append(records, response.Recordings...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListRecordingResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListRecordingResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -243,18 +248,24 @@ func (c *ApiService) StreamRecording(params *ListRecordingParams) (chan ApiV2010
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan ApiV2010Recording, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Recordings {
-				channel <- response.Recordings[item]
+			responseRecords := response.Recordings
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListRecordingResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListRecordingResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

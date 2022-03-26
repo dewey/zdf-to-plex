@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 
 	"github.com/twilio/twilio-go/client"
@@ -45,10 +44,12 @@ type CreateNewFactorParams struct {
 	ConfigSkew *int `json:"Config.Skew,omitempty"`
 	// Defines how often, in seconds, are TOTP codes generated. i.e, a new TOTP code is generated every time_step seconds. Must be between 20 and 60 seconds, inclusive. The default value is defined at the service level in the property `totp.time_step`. Defaults to 30 seconds if not configured.  Used when `factor_type` is `totp`
 	ConfigTimeStep *int `json:"Config.TimeStep,omitempty"`
-	// The Type of this Factor. Currently `push` and `totp` are supported. For `totp` to work, you need to contact [Twilio sales](https://www.twilio.com/help/sales) first to have the Verify TOTP feature enabled for your Twilio account.
+	// The Type of this Factor. Currently `push` and `totp` are supported.
 	FactorType *string `json:"FactorType,omitempty"`
 	// The friendly name of this Factor. This can be any string up to 64 characters, meant for humans to distinguish between Factors. For `factor_type` `push`, this could be a device name. For `factor_type` `totp`, this value is used as the “account name” in constructing the `binding.uri` property. At the same time, we recommend avoiding providing PII.
 	FriendlyName *string `json:"FriendlyName,omitempty"`
+	// Custom metadata associated with the factor. This is added by the Device/SDK directly to allow for the inclusion of device information. It must be a stringified JSON with only strings values eg. `{\\\"os\\\": \\\"Android\\\"}`. Can be up to 1024 characters in length.
+	Metadata *map[string]interface{} `json:"Metadata,omitempty"`
 }
 
 func (params *CreateNewFactorParams) SetBindingAlg(BindingAlg string) *CreateNewFactorParams {
@@ -103,6 +104,10 @@ func (params *CreateNewFactorParams) SetFriendlyName(FriendlyName string) *Creat
 	params.FriendlyName = &FriendlyName
 	return params
 }
+func (params *CreateNewFactorParams) SetMetadata(Metadata map[string]interface{}) *CreateNewFactorParams {
+	params.Metadata = &Metadata
+	return params
+}
 
 // Create a new Factor for the Entity
 func (c *ApiService) CreateNewFactor(ServiceSid string, Identity string, params *CreateNewFactorParams) (*VerifyV2NewFactor, error) {
@@ -151,6 +156,15 @@ func (c *ApiService) CreateNewFactor(ServiceSid string, Identity string, params 
 	}
 	if params != nil && params.FriendlyName != nil {
 		data.Set("FriendlyName", *params.FriendlyName)
+	}
+	if params != nil && params.Metadata != nil {
+		v, err := json.Marshal(params.Metadata)
+
+		if err != nil {
+			return nil, err
+		}
+
+		data.Set("Metadata", string(v))
 	}
 
 	resp, err := c.requestHandler.Post(c.baseURL+path, data, headers)
@@ -268,28 +282,15 @@ func (c *ApiService) PageFactor(ServiceSid string, Identity string, params *List
 
 // Lists Factor records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListFactor(ServiceSid string, Identity string, params *ListFactorParams) ([]VerifyV2Factor, error) {
-	if params == nil {
-		params = &ListFactorParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageFactor(ServiceSid, Identity, params, "", "")
+	response, err := c.StreamFactor(ServiceSid, Identity, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []VerifyV2Factor
+	records := make([]VerifyV2Factor, 0)
 
-	for response != nil {
-		records = append(records, response.Factors...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListFactorResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListFactorResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -307,18 +308,24 @@ func (c *ApiService) StreamFactor(ServiceSid string, Identity string, params *Li
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan VerifyV2Factor, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Factors {
-				channel <- response.Factors[item]
+			responseRecords := response.Factors
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListFactorResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListFactorResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}

@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
 	"strings"
 	"time"
 
@@ -227,28 +226,15 @@ func (c *ApiService) PageChallenge(ServiceSid string, Identity string, params *L
 
 // Lists Challenge records from the API as a list. Unlike stream, this operation is eager and loads 'limit' records into memory before returning.
 func (c *ApiService) ListChallenge(ServiceSid string, Identity string, params *ListChallengeParams) ([]VerifyV2Challenge, error) {
-	if params == nil {
-		params = &ListChallengeParams{}
-	}
-	params.SetPageSize(client.ReadLimits(params.PageSize, params.Limit))
-
-	response, err := c.PageChallenge(ServiceSid, Identity, params, "", "")
+	response, err := c.StreamChallenge(ServiceSid, Identity, params)
 	if err != nil {
 		return nil, err
 	}
 
-	curRecord := 0
-	var records []VerifyV2Challenge
+	records := make([]VerifyV2Challenge, 0)
 
-	for response != nil {
-		records = append(records, response.Challenges...)
-
-		var record interface{}
-		if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListChallengeResponse); record == nil || err != nil {
-			return records, err
-		}
-
-		response = record.(*ListChallengeResponse)
+	for record := range response {
+		records = append(records, record)
 	}
 
 	return records, err
@@ -266,18 +252,24 @@ func (c *ApiService) StreamChallenge(ServiceSid string, Identity string, params 
 		return nil, err
 	}
 
-	curRecord := 0
+	curRecord := 1
 	//set buffer size of the channel to 1
 	channel := make(chan VerifyV2Challenge, 1)
 
 	go func() {
 		for response != nil {
-			for item := range response.Challenges {
-				channel <- response.Challenges[item]
+			responseRecords := response.Challenges
+			for item := range responseRecords {
+				channel <- responseRecords[item]
+				curRecord += 1
+				if params.Limit != nil && *params.Limit < curRecord {
+					close(channel)
+					return
+				}
 			}
 
 			var record interface{}
-			if record, err = client.GetNext(c.baseURL, response, &curRecord, params.Limit, c.getNextListChallengeResponse); record == nil || err != nil {
+			if record, err = client.GetNext(c.baseURL, response, c.getNextListChallengeResponse); record == nil || err != nil {
 				close(channel)
 				return
 			}
@@ -312,10 +304,16 @@ func (c *ApiService) getNextListChallengeResponse(nextPageUrl string) (interface
 type UpdateChallengeParams struct {
 	// The optional payload needed to verify the Challenge. E.g., a TOTP would use the numeric code. For `TOTP` this value must be between 3 and 8 characters long. For `Push` this value can be up to 5456 characters in length
 	AuthPayload *string `json:"AuthPayload,omitempty"`
+	// Custom metadata associated with the challenge. This is added by the Device/SDK directly to allow for the inclusion of device information. It must be a stringified JSON with only strings values eg. `{\\\"os\\\": \\\"Android\\\"}`. Can be up to 1024 characters in length.
+	Metadata *map[string]interface{} `json:"Metadata,omitempty"`
 }
 
 func (params *UpdateChallengeParams) SetAuthPayload(AuthPayload string) *UpdateChallengeParams {
 	params.AuthPayload = &AuthPayload
+	return params
+}
+func (params *UpdateChallengeParams) SetMetadata(Metadata map[string]interface{}) *UpdateChallengeParams {
+	params.Metadata = &Metadata
 	return params
 }
 
@@ -331,6 +329,15 @@ func (c *ApiService) UpdateChallenge(ServiceSid string, Identity string, Sid str
 
 	if params != nil && params.AuthPayload != nil {
 		data.Set("AuthPayload", *params.AuthPayload)
+	}
+	if params != nil && params.Metadata != nil {
+		v, err := json.Marshal(params.Metadata)
+
+		if err != nil {
+			return nil, err
+		}
+
+		data.Set("Metadata", string(v))
 	}
 
 	resp, err := c.requestHandler.Post(c.baseURL+path, data, headers)

@@ -3,7 +3,7 @@
  *
  * This is the public Twilio REST API.
  *
- * API version: 1.24.0
+ * API version: 1.28.0
  * Contact: support@twilio.com
  */
 
@@ -41,6 +41,8 @@ type VerifyV2Challenge struct {
 	Identity *string `json:"identity,omitempty"`
 	// Nested resource URLs.
 	Links *map[string]interface{} `json:"links,omitempty"`
+	// Metadata of the challenge.
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 	// The Reason of this Challenge `status`
 	RespondedReason *string `json:"responded_reason,omitempty"`
 	// Service Sid.
